@@ -12,10 +12,8 @@ name: Publish to npm
 # and set NPM_TOKEN repo secret. After first publish, configure
 # trusted publisher on npmjs.com and revoke the token.
 
+# Manual only: a public release happens when someone dispatches this workflow, never from a tag push.
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       version:
