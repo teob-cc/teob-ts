@@ -1,7 +1,12 @@
 name: Publish to npm
 
 # This workflow publishes @lambda-house/teob-ts to npmjs.com.
-# It runs on GitHub-hosted runners (ubuntu-latest) from the PUBLIC repo.
+# It runs on teob-cc's own runners (self-hosted, test-public pool) from the PUBLIC repo;
+# GitHub-hosted runners are not used.
+#
+# BLOCKER: npm supports OIDC Trusted Publishing and --provenance on cloud-hosted runners only
+# ("Self-hosted runners are not currently supported", docs.npmjs.com/trusted-publishers).
+# Publishing from this pool needs a token and no --provenance; see the pull request.
 #
 # Authentication: OIDC Trusted Publishing (no stored tokens).
 # Configure at: https://www.npmjs.com/package/@lambda-house/teob-ts/settings
@@ -34,7 +39,7 @@ permissions:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, test-public]
 
     steps:
       - uses: actions/checkout@v4
