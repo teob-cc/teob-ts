@@ -1,18 +1,17 @@
 name: Publish to npm
 
-# This workflow publishes @lambda-house/teob-ts to npmjs.com.
-# It runs on GitHub-hosted runners (ubuntu-latest) from the PUBLIC repo.
+# Publishes @lambda-house/teob-ts to npmjs.com.
 #
-# Authentication: OIDC Trusted Publishing (no stored tokens).
-# Configure at: https://www.npmjs.com/package/@lambda-house/teob-ts/settings
-#   → Trusted Publisher → GitHub Actions
-#   → Org: lambda-house, Repo: teob-ts, Workflow: publish-npm.yml
-#
-# First-time bootstrap: use workflow_dispatch with use_token=true
-# and set NPM_TOKEN repo secret. After first publish, configure
-# trusted publisher on npmjs.com and revoke the token.
-
 # Manual only: a public release happens when someone dispatches this workflow, never from a tag push.
+#
+# Runs on teob-cc's own runners for public repositories ([self-hosted, test-public]), never on GitHub-hosted
+# ones. npm's OIDC trusted publishing and --provenance work on GitHub-hosted runners only ("Self-hosted runners
+# are not currently supported", docs.npmjs.com/trusted-publishers), so this publishes with a token and without
+# provenance.
+#
+# Secret: NPM_TOKEN — a granular npmjs.com access token with read/write on @lambda-house/teob-ts only
+# (npmjs.com → Access Tokens → Granular; it expires, renew it there).
+
 on:
   workflow_dispatch:
     inputs:
@@ -20,19 +19,13 @@ on:
         description: 'Version to publish (leave empty for package.json version)'
         required: false
         type: string
-      use_token:
-        description: 'Use NPM_TOKEN instead of OIDC (for first-time bootstrap only)'
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, test-public]
 
     steps:
       - uses: actions/checkout@v4
@@ -45,11 +38,6 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           cache: 'pnpm'
 
-      # Publishing still uses npm: OIDC trusted publishing needs
-      # npm >= 11.5.1. Pin to 11.x (12 changes install-script defaults).
-      - name: Ensure npm 11.x (>= 11.5.1)
-        run: npm install -g npm@11
-
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec tsc --noEmit
       - run: pnpm run test:ci
@@ -57,11 +45,11 @@ jobs:
 
       - name: Determine version
         id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            VERSION="${GITHUB_REF#refs/tags/v}"
+          if [ -n "$INPUT_VERSION" ]; then
+            VERSION="$INPUT_VERSION"
           else
             VERSION=$(node -p "require('./package.json').version")
           fi
@@ -69,26 +57,17 @@ jobs:
           echo "Publishing version: $VERSION"
 
       - name: Set version
-        run: npm version ${{ steps.version.outputs.VERSION }} --no-git-tag-version --allow-same-version
+        run: npm version "${{ steps.version.outputs.VERSION }}" --no-git-tag-version --allow-same-version
 
-      # Bootstrap publish (first time only, with token)
-      - name: Publish with token (bootstrap)
-        if: ${{ github.event.inputs.use_token == 'true' }}
-        run: npm publish --provenance --access public
+      - name: Publish
+        run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      # Normal publish (OIDC, no token needed)
-      - name: Publish with OIDC
-        if: ${{ github.event.inputs.use_token != 'true' }}
-        run: npm publish --provenance --access public
-
       - name: Summary
         run: |
-          echo "### Published to npmjs.com 🚀" >> $GITHUB_STEP_SUMMARY
+          echo "### Published to npmjs.com" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Package:** @lambda-house/teob-ts" >> $GITHUB_STEP_SUMMARY
           echo "**Version:** ${{ steps.version.outputs.VERSION }}" >> $GITHUB_STEP_SUMMARY
-          AUTH=$([[ "${{ github.event.inputs.use_token }}" == "true" ]] && echo "Token (bootstrap)" || echo "OIDC Trusted Publishing")
-          echo "**Auth:** $AUTH" >> $GITHUB_STEP_SUMMARY
           echo "**URL:** https://www.npmjs.com/package/@lambda-house/teob-ts" >> $GITHUB_STEP_SUMMARY
